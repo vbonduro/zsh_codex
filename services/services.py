@@ -236,6 +236,43 @@ class AmazonBedrock(BaseClient):
         response_body = json.loads(response['body'].read())
         return response_body["content"][0]["text"]
 
+class AnthropicClient(BaseClient):
+    """
+    config keys:
+        - api_type="anthropic"
+        - api_key (required)
+        - model (optional): defaults to "claude-sonnet-4-5"
+    """
+    
+    api_type = "anthropic"
+    default_model = os.getenv("ANTHROPIC_DEFAULT_MODEL", "claude-sonnet-4-5")
+    
+    def __init__(self, config: dict):
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            print(
+                "Anthropic library is not installed. Please install it using 'pip install anthropic'"
+            )
+            sys.exit(1)
+
+        self.config = config
+        self.config["model"] = self.config.get("model", self.default_model)
+        self.client = Anthropic(
+            api_key=self.config["api_key"],
+        )
+
+    def get_completion(self, full_command: str) -> str:
+        response = self.client.messages.create(
+            max_tokens=1024,
+            model=self.config["model"],
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": full_command},
+            ],
+            temperature=float(self.config.get("temperature", 1.0)),
+        )
+        return response.content
 
 
 class ClientFactory:
@@ -263,6 +300,8 @@ class ClientFactory:
                 return MistralClient(config)
             case AmazonBedrock.api_type:
                 return AmazonBedrock(config)
+            case AnthropicClient.api_type:
+                return AnthropicClient(config)
             case _:
                 raise KeyError(
                     f"Specified API type {api_type} is not one of the supported services {cls.api_types}"
